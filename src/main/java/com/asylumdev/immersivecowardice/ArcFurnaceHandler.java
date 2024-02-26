@@ -1,63 +1,53 @@
-package immersivecowardice;
+package com.asylumdev.immersivecowardice;
 
-import blusunrize.immersiveengineering.common.blocks.metal.ArcFurnaceTileEntity;
-import blusunrize.immersiveengineering.common.items.IEItems;
+import blusunrize.immersiveengineering.common.IEContent;
+import blusunrize.immersiveengineering.common.blocks.metal.TileEntityArcFurnace;
 import blusunrize.immersiveengineering.common.util.inventory.IEInventoryHandler;
-import net.minecraft.block.BlockState;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.Direction;
+import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ICapabilityProvider;
-import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.event.AttachCapabilitiesEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.IItemHandler;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 
 public class ArcFurnaceHandler {
     @SubscribeEvent
     public void OnAttachCapability(AttachCapabilitiesEvent<TileEntity> event) {
-        if(!CommonConfig.INSTANCE.arcFurnaceEnable.get())
+        if(!CommonConfig.arcFurnaceEnable)
             return;
         TileEntity tile = event.getObject();
-        if(tile instanceof ArcFurnaceTileEntity) {
-            event.addCapability(new ResourceLocation(ImmersiveCowardice.MODID,"arc_furnace_electrode_handler"), new ArcFurnaceElectrodeHandler((ArcFurnaceTileEntity) tile));
+        if(tile instanceof TileEntityArcFurnace) {
+            event.addCapability(new ResourceLocation(ImmersiveCowardice.MODID,"arc_furnace_electrode_handler"), new ArcFurnaceElectrodeHandler((TileEntityArcFurnace) tile));
         }
     }
 
     public static class ArcFurnaceElectrodeHandler implements ICapabilityProvider, IItemHandler {
         private static final BlockPos ELECTRODE_POS = new BlockPos(2, 4, 2);
 
-        private final LazyOptional<IItemHandler> holder = LazyOptional.of(() -> this);
-        private ArcFurnaceTileEntity tile;
-        private ArcFurnaceTileEntity master;
+
+        private TileEntityArcFurnace tile;
+        private TileEntityArcFurnace master;
         private IEInventoryHandler handler;
 
-        public ArcFurnaceElectrodeHandler(ArcFurnaceTileEntity tile) {
+        public ArcFurnaceElectrodeHandler(TileEntityArcFurnace tile) {
             this.tile = tile;
         }
 
         private void setupHandler() {
-            ArcFurnaceTileEntity currentMaster = tile.master();
+            TileEntityArcFurnace currentMaster = tile.master();
             if(this.master != currentMaster) {
                 this.handler = new IEInventoryHandler(3, currentMaster, 23, true, false);
                 this.master = currentMaster;
             }
-        }
-
-        @Nonnull
-        @Override
-        public <T> LazyOptional<T> getCapability(@Nonnull Capability<T> capability, @Nullable Direction side) {
-            if(tile.master() != null && tile.posInMultiblock.equals(ELECTRODE_POS))
-                return CapabilityItemHandler.ITEM_HANDLER_CAPABILITY.orEmpty(capability, holder);
-            else
-                return LazyOptional.empty();
         }
 
         @Override
@@ -65,27 +55,27 @@ public class ArcFurnaceHandler {
             return 3;
         }
 
-        @Nonnull
+        @NotNull
         @Override
         public ItemStack getStackInSlot(int slot) {
             setupHandler();
             return handler.getStackInSlot(slot);
         }
 
-        @Nonnull
+        @NotNull
         @Override
-        public ItemStack insertItem(int slot, @Nonnull ItemStack stack, boolean simulate) {
+        public ItemStack insertItem(int slot, @NotNull ItemStack stack, boolean simulate) {
             setupHandler();
             ItemStack remainder = handler.insertItem(slot, stack, simulate);
             if(remainder.getCount() < stack.getCount() && !simulate) { //Something changed, update the arc furnace.
-                BlockState state = master.getState();
+                IBlockState state = master.getWorld().getBlockState(master.getPos());
                 master.getWorld().notifyBlockUpdate(master.getPos(), state, state, 2);
             }
 
             return remainder;
         }
 
-        @Nonnull
+        @NotNull
         @Override
         public ItemStack extractItem(int slot, int amount, boolean simulate) {
             setupHandler();
@@ -99,8 +89,21 @@ public class ArcFurnaceHandler {
         }
 
         @Override
-        public boolean isItemValid(int slot, @Nonnull ItemStack stack) {
-            return !stack.isEmpty() && IEItems.Misc.graphiteElectrode.equals(stack.getItem()); //yeah, ok, i guess you could have used tags
+        public boolean isItemValid(int slot, @NotNull ItemStack stack) {
+            return !stack.isEmpty() && IEContent.itemGraphiteElectrode.equals(stack.getItem()); //yeah, ok, i guess you could have used tags
+        }
+
+        @Override
+        public boolean hasCapability(@NotNull Capability<?> capability, @Nullable EnumFacing facing) {
+            return capability == CapabilityItemHandler.ITEM_HANDLER_CAPABILITY;
+        }
+
+        @Nullable
+        @Override
+        public <T> T getCapability(@NotNull Capability<T> capability, @Nullable EnumFacing facing) {
+            return tile.master() != null && tile.getOrigin().equals(ELECTRODE_POS)
+                    ? CapabilityItemHandler.ITEM_HANDLER_CAPABILITY.cast(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY.getDefaultInstance())
+                    : null;
         }
     }
 }
